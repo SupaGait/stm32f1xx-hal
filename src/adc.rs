@@ -729,6 +729,29 @@ impl Adc<ADC1> {
     }
 }
 
+
+impl Adc<ADC2> {
+    pub fn into_interrupt<PIN>(mut self, _pin: PIN) -> AdcInt<ADC2>
+    where
+        PIN: Channel<ADC2, ID = u8>,
+    {
+        // Enable interrupt after conversions.
+        self.rb.cr1.modify(|_, w| w
+            .eocie().set_bit()
+            .discen().clear_bit()
+        );
+        
+        // select channel
+        let channel = PIN::channel();
+        self.set_channel_sample_time(channel, self.sample_time);
+        self.rb.sqr3.modify(|_, w| unsafe { w.sq1().bits(channel) });
+
+        AdcInt::<ADC2> {
+            adc_info: self
+        }
+    }
+}
+
 pub struct AdcInt<ADC> {
     adc_info: Adc<ADC>,
 }
@@ -744,9 +767,40 @@ impl AdcInt<ADC1>{
             swstart().set_bit()
         );
     }
+
     pub fn disable(&mut self) {
         self.adc_info.rb.cr2.modify(|_, w| w.cont().clear_bit());
     }
+
+    pub fn read_value(&self) -> u16 {
+        self.adc_info.rb.dr.read().data().bits()
+    }
+
+    pub fn is_ready(&self) -> bool {
+        self.adc_info.rb.sr.read().eoc().bit_is_set()
+    }
+
+    pub fn max_sample(&self) -> u16 {
+        self.adc_info.max_sample()
+    }
+}
+
+impl AdcInt<ADC2>{
+    pub fn enable(&mut self) {
+        self.adc_info.rb.cr2.modify(|_, w| w
+            .cont().set_bit()
+        );
+
+        // Separate the Start trigger.
+        self.adc_info.rb.cr2.modify(|_, w| w.
+            swstart().set_bit()
+        );
+    }
+
+    pub fn disable(&mut self) {
+        self.adc_info.rb.cr2.modify(|_, w| w.cont().clear_bit());
+    }
+    
     pub fn read_value(&self) -> u16 {
         self.adc_info.rb.dr.read().data().bits()
     }
