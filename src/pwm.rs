@@ -53,8 +53,8 @@
   ```
 */
 
+use core::marker::Copy;
 use core::marker::PhantomData;
-use core::marker::{Copy};
 use core::mem;
 
 use crate::hal;
@@ -137,7 +137,12 @@ pins_impl!(
 
 #[cfg(any(feature = "stm32f100", feature = "stm32f103", feature = "stm32f105",))]
 impl Timer<TIM1> {
-    pub fn pwm<REMAP, P, PINS, T>(self, _pins: PINS, mapr: &mut MAPR, freq: T) -> Pwm<TIM1, REMAP, P, PINS>
+    pub fn pwm<REMAP, P, PINS, T>(
+        self,
+        _pins: PINS,
+        mapr: &mut MAPR,
+        freq: T,
+    ) -> Pwm<TIM1, REMAP, P, PINS>
     where
         REMAP: Remap<Periph = TIM1>,
         PINS: Pins<REMAP, P>,
@@ -155,7 +160,12 @@ impl Timer<TIM1> {
 }
 
 impl Timer<TIM2> {
-    pub fn pwm<REMAP, P, PINS, T>(self, _pins: PINS, mapr: &mut MAPR, freq: T) -> Pwm<TIM2, REMAP, P, PINS>
+    pub fn pwm<REMAP, P, PINS, T>(
+        self,
+        _pins: PINS,
+        mapr: &mut MAPR,
+        freq: T,
+    ) -> Pwm<TIM2, REMAP, P, PINS>
     where
         REMAP: Remap<Periph = TIM2>,
         PINS: Pins<REMAP, P>,
@@ -169,7 +179,12 @@ impl Timer<TIM2> {
 }
 
 impl Timer<TIM3> {
-    pub fn pwm<REMAP, P, PINS, T>(self, _pins: PINS, mapr: &mut MAPR, freq: T) -> Pwm<TIM3, REMAP, P, PINS>
+    pub fn pwm<REMAP, P, PINS, T>(
+        self,
+        _pins: PINS,
+        mapr: &mut MAPR,
+        freq: T,
+    ) -> Pwm<TIM3, REMAP, P, PINS>
     where
         REMAP: Remap<Periph = TIM3>,
         PINS: Pins<REMAP, P>,
@@ -184,7 +199,12 @@ impl Timer<TIM3> {
 
 #[cfg(feature = "medium")]
 impl Timer<TIM4> {
-    pub fn pwm<REMAP, P, PINS, T>(self, _pins: PINS, mapr: &mut MAPR, freq: T) -> Pwm<TIM4, REMAP, P, PINS>
+    pub fn pwm<REMAP, P, PINS, T>(
+        self,
+        _pins: PINS,
+        mapr: &mut MAPR,
+        freq: T,
+    ) -> Pwm<TIM4, REMAP, P, PINS>
     where
         REMAP: Remap<Periph = TIM4>,
         PINS: Pins<REMAP, P>,
@@ -200,21 +220,32 @@ impl Timer<TIM4> {
 pub struct Pwm<TIM, REMAP, P, PINS>
 where
     REMAP: Remap<Periph = TIM>,
-    PINS: Pins<REMAP, P>
+    PINS: Pins<REMAP, P>,
 {
     clk: Hertz,
+    tim: TIM,
     _pins: PhantomData<(TIM, REMAP, P, PINS)>,
 }
 
 impl<TIM, REMAP, P, PINS> Pwm<TIM, REMAP, P, PINS>
 where
     REMAP: Remap<Periph = TIM>,
-    PINS: Pins<REMAP, P>
+    PINS: Pins<REMAP, P>,
 {
     pub fn split(self) -> PINS::Channels {
         unsafe { mem::MaybeUninit::uninit().assume_init() }
     }
 }
+
+// impl<REMAP, P, PINS> Pwm<TIM1, REMAP, P, PINS>
+// where
+//     REMAP: Remap<Periph = TIM1>,
+//     PINS: Pins<REMAP, P>,
+// {
+//     pub fn change_pwm_mode(&mut self, variant: crate::pac::tim1::cr1::CMS_A) {
+//         self.tim.cr1.modify(|_, w| w.cms().variant(variant))
+//     }
+// }
 
 pub struct PwmChannel<TIM, CHANNEL> {
     _channel: PhantomData<CHANNEL>,
@@ -227,7 +258,7 @@ pub struct C3;
 pub struct C4;
 
 macro_rules! hal {
-    ($($TIMX:ident: ($timX:ident),)+) => {
+    ($($TIMX:ident: ($timX:ident, $master_timbase:ident),)+) => {
         $(
             fn $timX<REMAP, P, PINS>(
                 tim: $TIMX,
@@ -283,21 +314,22 @@ macro_rules! hal {
 
                 Pwm {
                     clk: clk,
+                    tim,
                     _pins: PhantomData
                 }
             }
-            
+
         /*
-        The following implemention of the embedded_hal::Pwm uses Hertz as a time type.  This was choosen 
-        because of the timescales of operations being on the order of nanoseconds and not being able to 
+        The following implemention of the embedded_hal::Pwm uses Hertz as a time type.  This was choosen
+        because of the timescales of operations being on the order of nanoseconds and not being able to
         efficently represent a float on the hardware.  It might be possible to change the time type to
-        a different time based using such as the nanosecond.  The issue with doing so is that the max 
+        a different time based using such as the nanosecond.  The issue with doing so is that the max
         delay would then be at just a little over 2 seconds because of the 32 bit depth of the number.
-        Using milliseconds is also an option, however, using this as a base unit means that only there 
+        Using milliseconds is also an option, however, using this as a base unit means that only there
         could be resolution issues when trying to get a specific value, because of the integer nature.
 
-        To find a middle ground, the Hertz type is used as a base here and the Into trait has been 
-        defined for several base time units.  This will allow for calling the set_period method with 
+        To find a middle ground, the Hertz type is used as a base here and the Into trait has been
+        defined for several base time units.  This will allow for calling the set_period method with
         something that is natural to both the MCU and the end user.
         */
         impl<REMAP, P, PINS> hal::Pwm for Pwm<$TIMX, REMAP, P, PINS> where
@@ -369,6 +401,8 @@ macro_rules! hal {
                             (*$TIMX::ptr()).arr.write(|w| w.arr().bits(arr));
                         }
                 }
+
+
             }
 
             impl hal::PwmPin for PwmChannel<$TIMX, C1> {
@@ -466,21 +500,31 @@ macro_rules! hal {
                     unsafe { (*$TIMX::ptr()).ccr4.write(|w| w.ccr().bits(duty)) }
                 }
             }
+
+            impl<REMAP, P, PINS> Pwm<$TIMX, REMAP, P, PINS>
+            where
+                REMAP: Remap<Periph = $TIMX>,
+                PINS: Pins<REMAP, P>,
+            {
+                pub fn change_pwm_mode(&mut self, variant: crate::pac::$master_timbase::cr1::CMS_A) {
+                    self.tim.cr1.modify(|_, w| w.cms().variant(variant))
+                }
+            }
         )+
     }
 }
 
 #[cfg(any(feature = "stm32f100", feature = "stm32f103", feature = "stm32f105",))]
 hal! {
-    TIM1: (tim1),
+    TIM1: (tim1, tim1),
 }
 
 hal! {
-    TIM2: (tim2),
-    TIM3: (tim3),
+    TIM2: (tim2, tim2),
+    TIM3: (tim3, tim2),
 }
 
 #[cfg(feature = "medium")]
 hal! {
-    TIM4: (tim4),
+    TIM4: (tim4, tim2),
 }

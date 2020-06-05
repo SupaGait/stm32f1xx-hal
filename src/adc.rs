@@ -757,6 +757,13 @@ macro_rules! adcInt_hal {
                     self.adc_info.rb.cr2.modify(|_, w| w.swstart().set_bit());
                 }
 
+                pub fn enable_external_trigger(&mut self, trigger: crate::pac::$adc::cr2::EXTSEL_A) {
+                    self.adc_info.rb.cr2.modify(|_, w| w
+                        .cont().clear_bit()
+                        .exttrig().set_bit()
+                        .extsel().variant(trigger))
+                }
+
                 pub fn disable(&mut self) {
                     self.adc_info.rb.cr2.modify(|_, w| w.cont().clear_bit());
                 }
