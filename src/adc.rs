@@ -366,7 +366,7 @@ macro_rules! adc_hal {
                     self.rb
                 }
 
-                pub fn into_interrupt<PIN>(mut self, _pin: PIN) -> AdcInt<$ADC>
+                pub fn into_reg_interrupt<PIN>(mut self, _pin: PIN) -> AdcInt<$ADC>
                 where
                     PIN: Channel<$ADC, ID = u8>,
                 {
@@ -379,9 +379,31 @@ macro_rules! adc_hal {
                     // select channel
                     let channel = PIN::channel();
                     self.set_channel_sample_time(channel, self.sample_time);
+                    self.rb.sqr1.modify(|_, w| w.l().bits(0b0));
                     self.rb.sqr3.modify(|_, w| unsafe { w.sq1().bits(channel) });
 
                     AdcInt::<$ADC> {
+                        adc_info: self
+                    }
+                }
+
+                pub fn into_inj_interrupt<PIN>(mut self, _pin: PIN) -> AdcInjInt<$ADC>
+                where
+                    PIN: Channel<$ADC, ID = u8>,
+                {
+                    // Enable interrupt after conversions.
+                    self.rb.cr1.modify(|_, w| w
+                        .jeocie().set_bit()
+                        .jdiscen().clear_bit()
+                    );
+
+                    // select channel
+                    let channel = PIN::channel();
+                    self.set_channel_sample_time(channel, self.sample_time);
+                    self.rb.jsqr.modify(|_, w| w.jl().bits(0b0));
+                    self.rb.jsqr.modify(|_, w| unsafe { w.jsq4().bits(channel) });
+
+                    AdcInjInt::<$ADC> {
                         adc_info: self
                     }
                 }
@@ -742,6 +764,9 @@ where
 pub struct AdcInt<ADC> {
     adc_info: Adc<ADC>,
 }
+pub struct AdcInjInt<ADC> {
+    adc_info: Adc<ADC>,
+}
 
 macro_rules! adcInt_hal {
     ($(
@@ -757,13 +782,12 @@ macro_rules! adcInt_hal {
                     self.adc_info.rb.cr2.modify(|_, w| w.swstart().set_bit());
                 }
 
-                pub fn enable_external_trigger(&mut self, trigger: crate::pac::$adc::cr2::EXTSEL_A) {
+                pub fn enable_ext_trigger(&mut self, trigger: crate::pac::$adc::cr2::EXTSEL_A) {
                     self.adc_info.rb.cr2.modify(|_, w| w
                         .cont().clear_bit()
                         .exttrig().set_bit()
                         .extsel().variant(trigger))
                 }
-
                 pub fn disable(&mut self) {
                     self.adc_info.rb.cr2.modify(|_, w| w.cont().clear_bit());
                 }
@@ -774,6 +798,37 @@ macro_rules! adcInt_hal {
 
                 pub fn is_ready(&self) -> bool {
                     self.adc_info.rb.sr.read().eoc().bit_is_set()
+                }
+
+                pub fn max_sample(&self) -> u16 {
+                    self.adc_info.max_sample()
+                }
+            }
+
+            impl AdcInjInt<$ADC> {
+                pub fn enable(&mut self) {
+                    self.adc_info.rb.cr2.modify(|_, w| w.cont().set_bit());
+
+                    // Separate the Start trigger.
+                    self.adc_info.rb.cr2.modify(|_, w| w.jswstart().set_bit());
+                }
+                pub fn enable_ext_trigger(&mut self, trigger: crate::pac::$adc::cr2::JEXTSEL_A) {
+                    self.adc_info.rb.cr2.modify(|_, w| w
+                        .cont().clear_bit()
+                        .jexttrig().set_bit()
+                        .jextsel().variant(trigger))
+                }
+                pub fn disable(&mut self) {
+                    self.adc_info.rb.cr2.modify(|_, w| w.cont().clear_bit());
+                }
+
+                pub fn read_value(&self) -> u16 {
+                    self.adc_info.rb.sr.modify(|_, w| w.jeoc().clear_bit());
+                    self.adc_info.rb.jdr1.read().jdata().bits()
+                }
+
+                pub fn is_ready(&self) -> bool {
+                    self.adc_info.rb.sr.read().jeoc().bit_is_set()
                 }
 
                 pub fn max_sample(&self) -> u16 {
