@@ -509,6 +509,25 @@ macro_rules! hal {
                 pub fn change_pwm_mode(&mut self, variant: crate::pac::$master_timbase::cr1::CMS_A) {
                     self.tim.cr1.modify(|_, w| w.cms().variant(variant))
                 }
+                pub fn config_ch1_ch2(&mut self) -> (PwmChannel<$TIMX, C1>, PwmChannel<$TIMX, C2>){
+
+                    // Stop timer
+                    self.tim.cr1.write(|w| w.cen().clear_bit());
+
+                    self.tim.ccmr1_output().modify(|_, w| w.oc1pe().set_bit().oc1m().pwm_mode1() );
+                    self.tim.ccmr1_output().modify(|_, w| w.oc2pe().set_bit().oc2m().pwm_mode1() );
+
+                    // Update
+                    self.tim.egr.write(|w| w.ug().set_bit());
+
+                    // Re-start timer
+                    self.tim.cr1.write(|w| w.cen().set_bit());
+
+                    (
+                        PwmChannel::<$TIMX, C1>{_channel: PhantomData::default(), _tim: PhantomData::default()},
+                        PwmChannel::<$TIMX, C2>{_channel: PhantomData::default(), _tim: PhantomData::default()}
+                    )
+                }
             }
         )+
     }
